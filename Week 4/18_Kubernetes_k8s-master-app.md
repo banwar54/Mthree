@@ -23,9 +23,9 @@
 - **WSL2 Network Fixes**: Reset `wsl.conf` and DNS settings for stable connectivity.
 
 ---
-# Kubernetes Deployment Guide
+# **Kubernetes Deployment Guide**
 
-## Explanation of the k8s.sh Script
+## **Explanation of the k8s.sh Script**
 The provided `k8s.sh` script is a comprehensive Kubernetes deployment automation script that simplifies the process of deploying a containerized application using Kubernetes.
 
 ### **Key Features of the Script**
@@ -49,7 +49,7 @@ The provided `k8s.sh` script is a comprehensive Kubernetes deployment automation
 
 ---
 
-## Running the Minikube Reset Script**
+## **Running the Minikube Reset Script**
 ```bash
 chmod +x minikube-reset-script.sh
 ./minikube-reset-script.sh

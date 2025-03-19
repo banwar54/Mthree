@@ -1,0 +1,521 @@
+# Prometheus, Loki, and Grafana
+
+## What is Prometheus?
+
+Prometheus is an open-source time-series database used for monitoring and alerting. It collects metrics from configured targets at given intervals, evaluates rule expressions, displays the results, and can trigger alerts when specified conditions are observed.
+
+### Key Components of Prometheus:
+- **Time-series data**: Metrics that change over time
+- **PromQL**: Prometheus Query Language used to query the collected metrics
+- **Exporters**: Agents that collect metrics from various services and expose them in a format Prometheus can understand
+- **Alerting**: Capability to send notifications when metrics breach defined thresholds
+
+## What is Loki?
+
+Loki is a horizontally scalable, highly available log aggregation system designed to work with Grafana. Unlike other logging systems, Loki is built around the idea of only indexing metadata about your logs (labels) rather than the full text, which makes it more cost-effective and efficient.
+
+### Key Components of Loki:
+- **Log streams**: Identified by a set of labels
+- **LogQL**: Loki's query language for searching and analyzing logs
+- **Labels**: Key-value pairs used to categorize and query log data
+
+## What is Grafana?
+
+Grafana is an open-source visualization and analytics platform. It allows you to query, visualize, alert on, and understand your metrics no matter where they are stored. It provides tools to turn your time-series database data into beautiful graphs and visualizations.
+
+## Prometheus Query Language (PromQL)
+
+### Basic PromQL Concepts
+
+#### Metrics and Labels
+
+Metrics in Prometheus are time-series data points that have a name and a set of labels (key-value pairs).
+
+```
+http_requests_total{status="200", method="GET"}
+```
+
+In this example:
+- `http_requests_total` is the metric name
+- `status="200"` and `method="GET"` are labels
+
+#### Common PromQL Functions
+
+1. **rate()**: Calculates the per-second rate of increase of a counter
+   ```
+   rate(http_requests_total[5m])
+   ```
+   This shows the rate of HTTP requests per second over the last 5 minutes.
+
+2. **sum()**: Aggregates values
+   ```
+   sum(rate(http_requests_total[5m]))
+   ```
+   This sums up the rates of all HTTP requests.
+
+3. **by()**: Groups results by specific labels
+   ```
+   sum by(status) (rate(http_requests_total[5m]))
+   ```
+   This groups request rates by status code.
+
+4. **increase()**: Shows the increase in a counter over a time period
+   ```
+   increase(http_requests_total[1h])
+   ```
+   This shows the total increase in HTTP requests over the last hour.
+
+5. **avg()**, **min()**, **max()**: Statistical operations
+   ```
+   avg(rate(http_requests_total[5m]))
+   ```
+   This calculates the average rate of HTTP requests.
+
+### Advanced PromQL
+
+#### Filtering and Matching
+
+- Exact match: `http_requests_total{status="200"}`
+- Regex match: `http_requests_total{status=~"2.."}`
+- Negated match: `http_requests_total{status!="200"}`
+- Negated regex match: `http_requests_total{status!~"2.."}`
+
+#### Arithmetic Operations
+
+You can perform arithmetic between metrics:
+```
+(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100
+```
+This calculates the memory usage percentage.
+
+## Part 3: Loki Query Language (LogQL)
+
+### Basic LogQL Concepts
+
+#### Log Stream Selection
+
+Select log streams using labels:
+```
+{app="nginx", env="production"}
+```
+This selects logs from the nginx application in the production environment.
+
+#### Log Content Filtering
+
+Filter log content using operators:
+- `|=`: Contains
+- `!=`: Does not contain
+- `|~`: Matches regex
+- `!~`: Does not match regex
+
+Example:
+```
+{app="nginx"} |= "ERROR"
+```
+This selects logs from nginx that contain the word "ERROR".
+
+#### Log Parsing and Extraction
+
+Extract fields from logs:
+```
+{app="nginx"} | pattern `<_> - - <_> "<_> <_> <_>" <status> <_>`
+```
+This extracts the status code from nginx logs.
+
+Or for JSON logs:
+```
+{app="api"} | json
+```
+This parses JSON logs and extracts fields.
+
+### Advanced LogQL
+
+#### Aggregations
+
+Count occurrences over time:
+```
+sum by(status) (count_over_time({app="nginx"} |= "ERROR" [5m]))
+```
+This counts ERROR logs from nginx over the last 5 minutes, grouped by status.
+
+#### Metrics from Logs
+
+Create metrics from log data:
+```
+rate({app="nginx"} |= "ERROR" [5m])
+```
+This shows the rate of ERROR logs per second over the last 5 minutes.
+
+## Part 4: Using Prometheus in Grafana
+
+### Adding Prometheus as a Data Source
+
+1. Navigate to Configuration > Data Sources
+2. Click "Add data source"
+3. Select "Prometheus"
+4. Enter your Prometheus server URL (typically http://localhost:9090)
+5. Click "Save & Test"
+
+### Creating a Dashboard with Prometheus Data
+
+1. Click "+ Create" > "Dashboard"
+2. Click "Add new panel"
+3. In the panel editor, select "Prometheus" as the data source
+4. In the query field, enter your PromQL query
+5. Use the "Metrics browser" to explore available metrics
+6. Apply functions using the Function dropdown
+
+### Common Prometheus Query Examples
+
+1. **CPU Usage**:
+   ```
+   100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+   ```
+
+2. **Memory Usage**:
+   ```
+   (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100
+   ```
+
+3. **HTTP Error Rate**:
+   ```
+   sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100
+   ```
+
+4. **Request Latency (99th percentile)**:
+   ```
+   histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+   ```
+
+## Part 5: Using Loki in Grafana
+
+### Adding Loki as a Data Source
+
+1. Navigate to Configuration > Data Sources
+2. Click "Add data source"
+3. Select "Loki"
+4. Enter your Loki server URL
+5. Click "Save & Test"
+
+### Creating a Logs Panel
+
+1. In your dashboard, add a new panel
+2. Select "Logs" as the visualization
+3. Select "Loki" as the data source
+4. Enter your LogQL query
+5. Use the "Log browser" to explore available log streams
+
+### Common Loki Query Examples
+
+1. **Filter for Error Logs**:
+   ```
+   {app="myapp"} |= "ERROR"
+   ```
+
+2. **Count Error Logs by Service**:
+   ```
+   sum by(service) (count_over_time({app="myapp"} |= "ERROR" [5m]))
+   ```
+
+3. **Extract and Count Status Codes**:
+   ```
+   {app="nginx"} | pattern `<_> - - <_> "<_> <_> <_>" <status> <_>` | count_over_time([5m]) by (status)
+   ```
+
+4. **Parse JSON Logs**:
+   ```
+   {app="api"} | json | response_time > 200
+   ```
+
+## Part 6: Building a Comprehensive Error Monitoring Dashboard
+
+Now that you understand the basics of Prometheus and Loki queries, let's put this knowledge into practice by creating a comprehensive error monitoring dashboard in Grafana.
+
+### Step 1: Access Grafana and Start a New Dashboard
+
+1. Ensure port-forwarding is active for Grafana:
+   ```bash
+   kubectl port-forward svc/grafana -n monitoring 3000:80
+   ```
+
+2. Open your browser and navigate to http://localhost:3000
+
+3. Log in with username admin and password admin
+
+4. Create a new dashboard:
+   - Click the + icon in the left sidebar
+   - Select "Dashboard" from the dropdown menu
+   - You'll see an empty dashboard with a welcome message
+   - Click "Add visualization"
+
+### Step 2: Create a Container Restart Count Panel
+
+Container restarts are often the first indicator of application errors:
+
+1. Select your data source:
+   - Choose "Prometheus" from the data source dropdown
+
+2. Enter the following PromQL query:
+   ```
+   sum by(pod) (kube_pod_container_status_restarts_total{namespace="sample-app"})
+   ```
+
+3. Configure the visualization:
+   - On the right panel, select "Visualization" and choose "Stat"
+   - Under "Panel options," name it "Container Restarts"
+   - Under "Value options":
+     - Set "Show" to "Calculate"
+     - Set "Calculation" to "Last non-null value"
+     - Set "Fields" to "All fields"
+
+4. Set up thresholds for visual indicators:
+   - Find "Thresholds" in the right panel
+   - Click "Add threshold"
+   - Set:
+     - 0-1: Green (default)
+     - 1-5: Orange (warning)
+     - 5+: Red (critical)
+
+5. Under "Text size" set the value to "Large"
+
+6. Click the blue "Apply" button in the top-right corner
+
+### Step 3: Create a Pod Health Status Panel
+
+This panel will show the health status of all your pods:
+
+1. Add a new visualization:
+   - Click "Add" in the top menu
+   - Select "Visualization"
+
+2. Choose "Prometheus" as your data source
+
+3. Enter this query to track unhealthy pods:
+   ```
+   sum by(pod) (kube_pod_status_phase{namespace="sample-app", phase!="Running"})
+   ```
+
+4. Configure visualization:
+   - Select "Table" visualization
+   - Under "Panel options," name it "Pod Health Issues"
+   - Under "Table options":
+     - Enable "Show header"
+
+5. Under "Column styles":
+   - Add a field override for "Value"
+   - Set "Cell display mode" to "Color background"
+   - Add thresholds: 
+     - 0: Green
+     - 1: Red
+
+6. Click "Apply" to save this panel
+
+### Step 4: Create a Memory Usage Panel
+
+High memory usage often precedes application errors:
+
+1. Add another visualization and select "Prometheus"
+
+2. Enter this query for memory usage percentage:
+   ```
+   sum by(pod) (container_memory_usage_bytes{namespace="sample-app"}) / sum by(pod) (container_spec_memory_limit_bytes{namespace="sample-app"}) * 100
+   ```
+
+3. Configure visualization:
+   - Select "Gauge" as the visualization type
+   - Name the panel "Memory Usage (%)"
+   
+4. Under "Value options":
+   - Set "Show" to "Calculate"
+   - Set "Calculation" to "Last *"
+   - Set "Fields" to match your pod names
+
+5. Under "Gauge options":
+   - Set "Min" to 0
+   - Set "Max" to 100
+   
+6. Configure thresholds:
+   - 0-70: Green
+   - 70-85: Orange
+   - 85-100: Red
+
+7. Click "Apply" to save
+
+### Step 5: Create a CPU Usage Panel
+
+1. Add a new visualization with "Prometheus" data source
+
+2. Enter this CPU usage query:
+   ```
+   sum by(pod) (rate(container_cpu_usage_seconds_total{namespace="sample-app"}[5m])) / sum by(pod) (kube_pod_container_resource_limits_cpu_cores{namespace="sample-app"}) * 100
+   ```
+
+3. Configure visualization:
+   - Select "Gauge" visualization
+   - Name it "CPU Usage (%)"
+   
+4. Configure value options and thresholds similar to the memory gauge:
+   - 0-70: Green
+   - 70-90: Orange
+   - 90-100: Red
+
+5. Click "Apply" to save
+
+### Step 6: Create an HTTP Error Rate Panel
+
+1. Add a new visualization with "Prometheus" data source
+
+2. If you're using a standard metrics exporter, enter this query for HTTP errors:
+   ```
+   sum(rate(http_requests_total{namespace="sample-app", status_code=~"5.."}[5m])) / sum(rate(http_requests_total{namespace="sample-app"}[5m])) * 100
+   ```
+   
+   Note: This assumes your application exposes standard Prometheus metrics. You may need to adjust the metric names to match your specific application.
+
+3. Configure visualization:
+   - Select "Time series" visualization
+   - Name it "HTTP Error Rate (%)"
+   
+4. Under "Standard options":
+   - Set "Unit" to "Percent (0-100)"
+   
+5. Under "Thresholds":
+   - 0-1: Green
+   - 1-5: Orange
+   - 5+: Red
+
+6. Under "Graph styles":
+   - Set "Line width" to 2
+   - Set "Fill opacity" to 20
+   - Set "Line interpolation" to "Smooth"
+
+7. Click "Apply" to save
+
+### Step 7: Create a Slow Response Panel
+
+1. Add a new visualization with "Prometheus" data source
+
+2. Enter this query for response time:
+   ```
+   histogram_quantile(0.95, sum by(le) (rate(http_request_duration_seconds_bucket{namespace="sample-app"}[5m])))
+   ```
+   
+   Note: Adjust metric names to match your application's exposed metrics.
+
+3. Configure visualization:
+   - Select "Time series" visualization
+   - Name it "95th Percentile Response Time"
+   
+4. Under "Standard options":
+   - Set "Unit" to "Seconds"
+   
+5. Under "Thresholds":
+   - 0-0.5: Green
+   - 0.5-1: Orange
+   - 1+: Red
+
+6. Click "Apply" to save
+
+### Step 8: Create a Failed Pod Scheduling Panel
+
+1. Add a new visualization with "Prometheus" data source
+
+2. Enter this query:
+   ```
+   sum(kube_pod_status_scheduled{namespace="sample-app", condition="false"})
+   ```
+
+3. Configure visualization:
+   - Select "Stat" visualization
+   - Name it "Failed Pod Scheduling"
+   
+4. Under "Value options":
+   - Set "Show" to "Calculate"
+   - Set "Calculation" to "Last *"
+   
+5. Under "Thresholds":
+   - 0: Green
+   - 1+: Red
+
+6. Click "Apply" to save
+
+### Step 9: Create OOM (Out of Memory) Kill Counter
+
+1. Add a new visualization with "Prometheus" data source
+
+2. Enter this query:
+   ```
+   sum(container_oom_events_total{namespace="sample-app"})
+   ```
+
+3. Configure visualization:
+   - Select "Stat" visualization
+   - Name it "OOM Kill Events"
+   
+4. Under "Value options":
+   - Set "Show" to "Calculate"
+   - Set "Calculation" to "Last *"
+   
+5. Under "Thresholds":
+   - 0: Green
+   - 1+: Red
+
+6. Click "Apply" to save
+
+### Step 10: Arrange Your Dashboard
+
+1. Resize and arrange all panels in a logical order:
+   - Place the most critical error indicators at the top
+   - Group related metrics together
+   - Make sure the most important panels are prominent
+   
+2. For a suggested layout:
+   - Top row: Container Restarts, Pod Health Issues, OOM Kill Events
+   - Middle row: Memory Usage, CPU Usage
+   - Bottom row: HTTP Error Rate, Response Time, Failed Pod Scheduling
+
+3. Save your dashboard:
+   - Click the save icon in the top-right corner
+   - Name it "Comprehensive Error Monitoring"
+   - Add a description if desired
+   - Add tags like "errors", "monitoring", "kubernetes"
+   - Click "Save"
+
+### Step 11: Add Dashboard Settings
+
+1. Click the gear icon in the top-right to access dashboard settings
+
+2. Under "General":
+   - Confirm your dashboard title
+   - Add a detailed description
+
+3. Under "Variables" (to make your dashboard reusable):
+   - Add a variable named "namespace"
+   - Set Type to "Query"
+   - Set Data source to "Prometheus"
+   - Query: label_values(kube_namespace_labels, namespace)
+   - Under Selection options, enable "Multi-value" and "Include All option"
+   - Click "Update" then "Apply"
+
+4. Under "Time options":
+   - Set auto-refresh to "On"
+   - Set default refresh interval to "10s"
+
+5. Save your dashboard again
+
+### Step 12: Final Verification and Testing
+
+1. Verify your dashboard shows meaningful data:
+   - Check that all panels are populating with data
+   - If any panel shows "No data," revisit the query to ensure it matches your metrics
+
+2. Test error detection:
+   - If possible, trigger a test error in your application
+   - Verify it appears in your dashboard
+   - Check the time it takes for the error to be reflected
+
+3. Set up alerts (optional advanced step):
+   - Click on a critical panel like "Container Restarts"
+   - Go to Alert tab
+   - Create a new alert rule based on thresholds
+   - Set notification channels if configured

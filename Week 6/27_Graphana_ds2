@@ -1,0 +1,272 @@
+# Grafana Dashboard Setup Guide
+
+This guide explains how to set up a comprehensive monitoring dashboard in Grafana for SRE (Site Reliability Engineering) purposes. Each query is explained with its purpose, function, and implementation details.
+
+## Why Monitoring Matters
+
+Before diving into the dashboard setup, it's important to understand that monitoring is the foundation of observability in SRE. A well-designed dashboard helps teams:
+
+- Detect issues before they impact users
+- Troubleshoot problems more efficiently
+- Make data-driven decisions about system performance
+- Track the four golden signals: Traffic, Errors, Latency, and Saturation
+
+## Basic SRE Dashboard Components
+
+### 1. Request Rate Panel (Traffic)
+
+**Why we need this:**
+Traffic monitoring helps understand the load on your system. Sudden spikes or drops can indicate potential issues or unusual user behavior. Breaking down by endpoint helps identify which parts of your application are being used most frequently.
+
+**What this does:**
+This panel measures the rate of incoming requests to your application, segmented by endpoint. It shows the number of requests per second over time.
+
+**Query:**
+```
+sum(rate(app_request_count{namespace="sre-demo"}[1m])) by (endpoint)
+```
+
+**Explanation:**
+- `app_request_count`: Counter metric that increments each time a request is made
+- `namespace="sre-demo"`: Filters metrics to only the SRE demo namespace
+- `rate(...[1m])`: Calculates the per-second rate over a 1-minute window
+- `sum(...) by (endpoint)`: Groups results by endpoint to show traffic distribution
+
+**Visualization Type:** Time series
+**Unit:** requests/sec
+
+### 2. Error Rate Panel (Errors)
+
+**Why we need this:**
+Error monitoring is crucial for detecting when things go wrong. By expressing errors as a percentage of total requests, you get a normalized view of error rates regardless of traffic volume.
+
+**What this does:**
+This panel calculates the percentage of requests that result in 5xx (server error) status codes, providing an immediate view of system health.
+
+**Query:**
+```
+sum(rate(app_request_count{namespace="sre-demo", http_status=~"5.."}[1m])) / sum(rate(app_request_count{namespace="sre-demo"}[1m])) * 100
+```
+
+**Explanation:**
+- Numerator: Rate of requests with HTTP status codes in the 500 range (server errors)
+- Denominator: Rate of all requests
+- Multiplied by 100 to get a percentage
+- Regular expression `5..` matches any status code starting with 5 (500-599)
+
+**Visualization Type:** Stat  
+**Thresholds:**
+- 0-1%: Green (healthy)
+- 1-5%: Orange (concerning)
+- 5-100%: Red (critical)
+
+### 3. Latency Panel (Latency)
+
+**Why we need this:**
+Latency directly impacts user experience. High latency can indicate performance bottlenecks or resource constraints. The 95th percentile helps identify slow outlier requests while filtering out extreme anomalies.
+
+**What this does:**
+This panel shows the 95th percentile response time for requests, broken down by endpoint. This means 95% of requests are faster than the displayed value.
+
+**Query:**
+```
+histogram_quantile(0.95, sum(rate(app_request_latency_seconds_bucket{namespace="sre-demo"}[5m])) by (le, endpoint))
+```
+
+**Explanation:**
+- `app_request_latency_seconds_bucket`: Histogram metric containing request durations organized in buckets
+- `histogram_quantile(0.95, ...)`: Calculates the 95th percentile from the histogram data
+- `sum(...) by (le, endpoint)`: Groups by latency bucket (`le`) and endpoint
+- `[5m]`: Uses a 5-minute window for more stable percentile calculations
+
+**Visualization Type:** Time series  
+**Unit:** Seconds
+
+### 4. Active Requests Panel (Saturation)
+
+**Why we need this:**
+Saturation helps understand how "full" your system is. Too many concurrent requests might exhaust available resources and degrade performance or stability.
+
+**What this does:**
+This panel shows the current number of in-flight requests being processed by your application at any given moment.
+
+**Query:**
+```
+app_active_requests{namespace="sre-demo"}
+```
+
+**Explanation:**
+- `app_active_requests`: Gauge metric that represents the current number of requests being processed
+- `namespace="sre-demo"`: Filters to only the SRE demo namespace
+
+**Visualization Type:** Stat
+
+## Log Analysis Dashboard
+
+### 1. Application Logs Panel
+
+**Why we need this:**
+Raw logs provide context and detail that metrics alone cannot. They help with root cause analysis and debugging specific issues.
+
+**What this does:**
+Displays all logs from the application in chronological order.
+
+**Query:**
+```
+{namespace="sre-demo"}
+```
+
+**Explanation:**
+- Simple query that retrieves all logs from the sre-demo namespace
+- No filtering applied to see the complete picture
+
+**Visualization Type:** Logs  
+**Options:** Show timestamps enabled
+
+### 2. Error Logs Panel
+
+**Why we need this:**
+Isolating error logs makes it easier to spot problems quickly without wading through normal operational logs.
+
+**What this does:**
+Filters logs to show only those containing the word "error", helping to quickly identify issues.
+
+**Query:**
+```
+{namespace="sre-demo"} |= "error"
+```
+
+**Explanation:**
+- `{namespace="sre-demo"}`: Base query selecting all logs from the namespace
+- `|= "error"`: Filter operator that only shows logs containing the string "error"
+
+**Visualization Type:** Logs
+
+### 3. Log Volume Panel
+
+**Why we need this:**
+Unusual changes in log volume can indicate system problems. Spikes might mean errors or unusual activity, while drops could indicate service outages.
+
+**What this does:**
+This panel tracks the rate of log entries over time, which can help identify unusual patterns.
+
+**Query:**
+```
+sum(count_over_time({namespace="sre-demo"}[1m]))
+```
+
+**Explanation:**
+- `count_over_time(...[1m])`: Counts log entries over a 1-minute rolling window
+- `sum(...)`: Aggregates counts if there are multiple sources
+
+**Visualization Type:** Time series
+
+## Advanced Monitoring Panels
+
+### 1. CPU Usage Panel
+
+**Why we need this:**
+High CPU usage can indicate processing bottlenecks, inefficient code, or the need to scale horizontally. Tracking CPU usage by pod helps identify resource hogs.
+
+**What this does:**
+Measures the rate of CPU consumption by each pod in the namespace.
+
+**Query:**
+```
+sum(rate(container_cpu_usage_seconds_total{namespace="sre-demo"}[5m])) by (pod)
+```
+
+**Explanation:**
+- `container_cpu_usage_seconds_total`: Counter that tracks total CPU time consumed
+- `rate(...[5m])`: Calculates CPU cores used per second over 5 minutes
+- `sum(...) by (pod)`: Groups and sums the metrics by pod name
+
+**Visualization Type:** Time series  
+**Unit:** Cores
+
+### 2. Memory Usage Panel
+
+**Why we need this:**
+Memory leaks or inefficient memory usage can lead to performance degradation or OOM (Out of Memory) kills. Tracking memory by pod helps identify resource problems.
+
+**What this does:**
+Shows the current memory consumption of each pod.
+
+**Query:**
+```
+sum(container_memory_usage_bytes{namespace="sre-demo"}) by (pod)
+```
+
+**Explanation:**
+- `container_memory_usage_bytes`: Gauge that represents current memory usage
+- `sum(...) by (pod)`: Groups and sums the metrics by pod
+- No rate calculation needed since this is a current value, not a counter
+
+**Visualization Type:** Gauge  
+**Unit:** Bytes
+
+### 3. Slow API Requests Panel
+
+**Why we need this:**
+The 99th percentile helps identify the slowest requests that still affect real users. These outliers often represent the worst user experiences.
+
+**What this does:**
+This panel shows the 99th percentile latency for API requests by endpoint, focusing on the tail end of performance distribution.
+
+**Query:**
+```
+histogram_quantile(0.99, sum(rate(app_request_latency_seconds_bucket{namespace="sre-demo"}[5m])) by (le, endpoint))
+```
+
+**Explanation:**
+- Similar to the 95th percentile latency query, but using 0.99 instead of 0.95
+- Shows the latency threshold that 99% of requests are faster than
+- Helps identify the most extreme latency cases that affect 1% of users
+
+**Visualization Type:** Time series
+
+### 4. Pod Status Panel
+
+**Why we need this:**
+Understanding the current state of pods helps track deployments, restarts, and potential problems with pod scheduling or crashes.
+
+**What this does:**
+Shows the current status of all pods in the namespace, helping detect pods that are not running correctly.
+
+**Query:**
+```
+count by (pod, phase) (kube_pod_status_phase{namespace="sre-demo"})
+```
+
+**Explanation:**
+- `kube_pod_status_phase`: Metric that represents the current phase of each pod
+- Possible phases include: Pending, Running, Succeeded, Failed, Unknown
+- `count by (pod, phase)`: Counts pods in each state, grouped by pod name and phase
+
+**Visualization Type:** Table
+
+## Troubleshooting Common Dashboard Issues
+
+When setting up these dashboards, you might encounter a few common issues:
+
+1. **No data appearing**: Verify that Prometheus is correctly scraping your application and that metrics are being generated with the expected labels.
+
+2. **"No data points" error**: Check your time range selection and ensure the query is formatted correctly.
+
+3. **Incorrect units**: Make sure to set appropriate units in the panel options to make the data readable.
+
+4. **High cardinality issues**: If you're grouping by labels with many unique values, consider using more selective label filters.
+
+## Best Practices for Dashboard Design
+
+1. **Group related panels together**: Organize panels into rows based on their function or the service they monitor.
+
+2. **Use consistent naming**: Maintain a clear naming convention across all panels.
+
+3. **Include descriptive titles and tooltips**: Help others understand what each panel represents.
+
+4. **Set appropriate refresh rates**: Balance between freshness of data and server load.
+
+5. **Use dashboard variables**: Create template variables to easily switch between environments or services.
+
+6. **Keep it simple**: Start with essential metrics and add complexity only as needed.
